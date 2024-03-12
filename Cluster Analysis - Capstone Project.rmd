@@ -1,0 +1,80 @@
+---
+title: "Analysis of HMI time-of-use data"
+output: html_notebook
+---
+
+First load required libraries
+
+```{r}
+library(ape) #For fancy cluster plots
+library(lsa) #For computing cosine distance metrics
+```
+
+Now read data file, anonymize row names, and make useful column names:
+```{r}
+d <- read.csv("hmi_atwork_wide_t1.csv", header = T, row.names = 1)
+row.names(d) <- paste0("Comp_", LETTERS)[1:dim(d)[1]]
+names(d) <- paste0("hour_", c(0:23))
+
+head(d)
+```
+There are 24 companies total, but some have a very small number of observations. How many observations do we have for each company?
+
+```{r}
+barplot(rowSums(d), beside = T, las = 2)
+```
+There are a lot of companies with very few observations. Let's discard companies with ten or fewer datapoints:
+
+```{r}
+dall <- d #preserve all data in case we need it later
+d <- d[rowSums(d) > 10,] #Discard companies with less than 10 observations
+
+dim(d)
+```
+
+This leaves 16 of the original 24. We can visualize them with barplots:
+
+```{r fig.height=10}
+par(mfrow = c(4,4), mar = c(2,2,2,1), oma = c(2,2,2,2))
+for(i in c(1:16)) barplot(as.numeric(d[i,]), beside = T, main = row.names(d)[i])
+
+```
+By inspection there appear to be some different patterns. Are there any trends across companies? One way to assess this is to group companies based on how similar their usage-over-time patterns are to one another. This will require computing how similar each company is to each other company. We will use the cosine measure of similarity to compute this.
+
+The cosine measure is in the lsa package loaded earlier. It computes cosine similarity between the _columns_ of a matrix. We want the similarity between _rows_ of this matrix--so we will compute cosine on the transpose of the matrix using the 't()' function.
+
+**Note** that cosine is a measure of similarity--higher numbers means items are more similar to one another, with 1 being completely similar and -1 being completely dissimilar. Most visualization tools, however, operate on a distance matrix (high number mean things are very dissimilar). So to compute cosine _dissimilarity_, we will take 1 - cosine.
+```{r}
+dcos <- 1 - cosine(t(d))
+
+dcos[1:5,1:5]
+```
+
+This show the first five rows and columns of the cosine distance matrix. You can see the distance from an item to itself is 0 (diagonal values).
+
+Now we will compute a hierarchical cluster analysis of the companies based on these distances and visualize the result as a phylogram:
+```{r}
+hc <- hclust(as.dist(dcos)) #Compute the cluster analysis using dcos as a distance matrix
+
+plot(as.phylo(hc))
+```
+The analysis finds two broad groups, corresponding to two different general patterns of usage over the course of the day. We can color the leaves of the tree to make this obvious.
+
+In the code below, the function cutree(hc, 2) takes the hierarchical cluster analysis tree stored in hc (and shown above) and finds the "cut point" that divides the tree into two different clusters. It then returns, for each company in the dataset, which cluster that company belongs to, 1 or 2. We can use that value to set the color of the labels on the tree plot by passing the result to the tip.color argument:
+
+```{r}
+plot(as.phylo(hc), tip.color = cutree(hc,2))
+```
+So here there are 10 companies in cluster 1 (black) and 6 in cluster 2 (red). To visualize the typicaly usage pattern for each cluster, we can average the histograms for each group and plot those.
+
+```{r fig.height=8}
+par(mfrow = c(2,1), mar = c(3,3,2,1)) #Two-panel plot
+
+clusts <- cutree(hc, 2) #to which of 2 clusters does each item belong?
+barplot(colMeans(d[clusts==1,]), beside = T, main="Cluster 1", names.arg=c(0:23), 
+        cex.names=.8, col = "black") #Mean histogram for cluster 1
+barplot(colMeans(d[clusts==2,]), beside= T, main = "Cluster 2", names.arg=c(0:23), 
+        cex.names=.8, col = "red") #Mean histogram for cluster 2
+```
+
+So here you can see that the mean pattern for cluster 1 is roughly normal around mid-day, while cluster 2 peaks early in the day then declines.

@@ -1,0 +1,436 @@
+---
+title: "public_use"
+author: "Lucas Modahl"
+date: "2023-10-30"
+output: html_document
+---
+
+
+## Libraries
+```{r}
+# These packages are all for the statistical models ran below
+
+library(tidyverse)
+library(psych)
+library(effectsize)
+library(car)
+```
+
+## Reading in the data
+```{r}
+activity <- read_csv("public_use_data.csv")
+baseline <- read_csv("baseline_score.csv")
+demographics <- read_csv("demog.csv")
+```
+
+## Data transformations
+```{r}
+# Getting rid of unnecessary columns
+activity <- dplyr::select(activity, -c("participant_id", "device_make", "cohort", "path_uri"))
+```
+
+```{r}
+# Merging activity data
+merged <- merge(activity,baseline,by="user_id")
+```
+
+```{r}
+# Creating column of total logins per user
+tbl <- table(merged$user_id)
+merged$logins <- tbl[match(merged$user_id, names(tbl))]
+```
+
+```{r}
+# Creating composite scores for each ACIP measure
+
+merged$awareness_c <- merged$awareness - mean(merged$awareness, na.rm = TRUE)
+merged$connection_c <- merged$connection - mean(merged$connection, na.rm = TRUE)
+merged$insight_c <- merged$insight - mean(merged$insight, na.rm = TRUE)
+merged$purpose_c <- merged$purpose - mean(merged$purpose, na.rm = TRUE)
+```
+
+```{r}
+# Keeping only the first observation for each user since we're looking at initial ACIP scores
+
+merged_short <- merged %>%
+  group_by(user_id, completed_date) %>%
+  slice(1) %>%
+  ungroup()
+```
+
+## Data analysis of baseline ACIP scores
+
+```{r}
+# Analyzing the effects of baseline awareness score on logins
+
+m1 <- lm(logins ~ awareness_c, data = merged_short)
+summary(m1)
+Anova(m1, type = 3, test = 'F')
+
+```
+
+```{r}
+# Analyzing the effects of baseline connection score on logins
+
+m2 <- lm(logins ~ connection_c, data = merged_short)
+summary(m2)
+Anova(m2, type = 3, test = 'F')
+```
+
+```{r}
+# Analyzing the effects of baseline insight score on logins
+
+m3 <- lm(logins ~ insight_c, data = merged_short)
+summary(m3)
+Anova(m3, type = 3, test = 'F')
+```
+
+```{r}
+# Analyzing the effects of baseline purpose score on logins
+
+m4 <- lm(logins ~ purpose_c, data = merged_short)
+summary(m4)
+Anova(m4, type = 3, test = 'F')
+```
+
+## Merging and transformations with demographic data
+```{r}
+# Merging demographics with activity data
+
+merged_2 <- merge(activity,demographics,by="user_id")
+tbl_2 <- table(merged_2$user_id)
+merged_2$logins <- tbl_2[match(merged_2$user_id, names(tbl_2))]
+```
+
+```{r}
+# Again, keeping only the first observation for each user
+
+merged_2_short <- merged_2 %>%
+  group_by(user_id, completed_date) %>%
+  slice(1) %>%
+  ungroup()
+```
+
+## Recoding categorical variables to numeric for analysis
+
+```{r}
+# Meditation experience
+
+merged_2_short <- merged_2_short %>% 
+    mutate(medi_exp = as.character(medi_exp), 
+    medi_exp = replace(medi_exp, medi_exp == "Prefer not to say", NA))
+
+merged_2_short$medi_exp_int <- dplyr::recode(merged_2_short$medi_exp, 
+                         "Never" = 0,
+                         "Less than 1 year" = 1,
+                         "1-2 years" = 2,
+                         "1-3 years" = 3,
+                         "3-5 years" = 4,
+                         "5-10 years" = 5,
+                         "6-10 years" = 6,
+                         "More than 10 years" = 7,
+                         "10 or more years" = 8)
+```
+
+```{r}
+# Meditation length
+
+merged_2_short <- merged_2_short %>% 
+    mutate(medi_long = as.character(medi_long),
+    medi_long = replace(medi_long, medi_long == "Prefer not to say", NA))
+
+merged_2_short$medi_long_int <- dplyr::recode(merged_2_short$medi_long, 
+                         "I didn't meditate" = 0,
+                         "I don't currently meditate" = 0,
+                         "Less than 10 minutes" = 1,
+                         "10-20 minutes" = 2,
+                         "21-30 minutes" = 3,
+                         "31-45 minutes" = 4,
+                         "46-60 minutes" = 5,
+                         "More than 60 minutes" = 6)
+```
+
+```{r}
+# Meditation frequency
+
+merged_2_short <- merged_2_short %>% 
+    mutate(medi_freq = as.character(medi_freq),
+    medi_freq = replace(medi_freq, medi_freq == "Prefer not to say", NA))
+
+merged_2_short$medi_freq_int <- dplyr::recode(merged_2_short$medi_freq, 
+                         "I didn't meditate" = 0,
+                         "I don't currently meditate" = 0,
+                         "Less than once per week" = 1,
+                         "1-2 times per week" = 2,
+                         "3-4 times per week" = 3,
+                         "5-6 times per week" = 4,
+                         "7+ times per week" = 5)
+
+```
+
+```{r}
+# Education level
+
+merged_2_short <- merged_2_short %>% 
+    mutate(edu = as.character(edu),
+    edu = replace(edu, edu == "Prefer not to say", NA))
+
+merged_2_short$edu_int <- dplyr::recode(merged_2_short$edu, 
+                         "Never attended school or only attended kindergarten" = 0,
+                         "Grades 1 through 4 (Primary School)" = 1,
+                         "Grades 5 through 8 (Middle School)" = 2,
+                         "Grades 9 through 11 (Some High School)" = 3,
+                         "Grade 12 or GED (High School Graduate)" = 4,
+                         "1 to 3 years after High School (Technical School Some College Associate's Degree)" = 5,
+                         "College 4 years or more (College Graduate Bachelor's Degree)" = 6,
+                          "Advanced Degree (Master's Degree Doctorate Degree)" = 7)
+```
+
+```{r}
+# Age Group
+
+merged_2_short$age_int <- dplyr::recode(merged_2_short$age_group, 
+                         "13-17" = 0,
+                         "18-24" = 1,
+                         "19-24" = 1,
+                         "25-34" = 2,
+                         "35-44" = 3,
+                         "45-54" = 4,
+                         "55-64" = 5,
+                          "65-74" = 6,
+                         "75 or older" = 7)
+```
+
+```{r}
+# Analyzing the effect of meditation experience on logins
+
+m5 <- lm(logins ~ medi_exp_int, data = merged_2_short)
+summary(m5)
+Anova(m5, type = 3, test = 'F')
+```
+
+```{r}
+# Analyzing the effect of meditation length on logins
+
+m6 <- lm(logins ~ medi_long_int, data = merged_2_short)
+summary(m6)
+Anova(m6, type = 3, test = 'F')
+```
+
+```{r}
+# Analyzing the effect of meditation frequency on logins
+
+m7 <- lm(logins ~ medi_freq_int, data = merged_2_short)
+summary(m7)
+Anova(m7, type = 3, test = 'F')
+```
+
+```{r}
+# Analyzing the effect of education level on logins
+
+m8 <- lm(logins ~ edu_int, data = merged_2_short)
+summary(m8)
+Anova(m8, type = 3, test = 'F')
+```
+
+```{r}
+# Analyzing the effect of age group on logins
+
+m9 <- lm(logins ~ age_int, data = merged_2_short)
+summary(m9)
+Anova(m9, type = 3, test = 'F')
+```
+
+```{r}
+# Re-coding sex variable
+
+merged_2_short$sex_c <- dplyr::recode(merged_2_short$sex, 
+                         "Female" = 0,
+                         "Male" = 1)
+```
+
+
+```{r}
+# Analyzing the effect of sex on logins
+
+m10 <- lm(logins ~ sex_c, data = merged_2_short)
+summary(m10)
+Anova(m10, type = 3, test = 'F')
+```
+
+
+## Visualizations
+```{r}
+# AWARENESS
+
+merged_short %>% 
+  ggplot(mapping = aes(x= awareness, y = logins)) + 
+  stat_summary(geom = "point", fun = mean, position = position_dodge(width = .05),shape=21, size=1) +
+    geom_smooth(method="lm", alpha = .1) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+    xlab("Awareness Score") + 
+    ylab("Average # of Logins") + 
+    coord_cartesian(xlim =c(1, 5), ylim = c(0, 60)) +
+    scale_y_continuous(n.breaks = 6)
+
+```
+
+```{r}
+# CONNECTION
+
+merged_short %>% 
+  ggplot(mapping = aes(x= connection, y = logins)) + 
+  stat_summary(geom = "point", fun = mean, position = position_dodge(width = .05),shape=21, size=1) +
+    geom_smooth(method="lm", alpha = .1) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+    xlab("Connection Score") + 
+    ylab("Average # of Logins") +
+    coord_cartesian(xlim =c(1, 5), ylim = c(0, 60)) +
+   scale_y_continuous(n.breaks = 6)
+```
+
+```{r}
+# INSIGHT
+
+merged_short %>% 
+  ggplot(mapping = aes(x= insight, y = logins)) + 
+  stat_summary(geom = "point", fun = mean, position = position_dodge(width = .05),shape=21, size=1) +
+    geom_smooth(method="lm", alpha = .1) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+    xlab("Insight Score") + 
+    ylab("Average # of Logins") +
+  coord_cartesian(xlim =c(1, 5), ylim = c(0, 60))
+```
+
+```{r}
+# PURPOSE
+
+merged_short %>% 
+  ggplot(mapping = aes(x= purpose, y = logins)) + 
+  stat_summary(geom = "point", fun = mean, position = position_dodge(width = .05),shape=21, size=1) +
+    geom_smooth(method="lm", alpha = .1) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, NA))+
+    xlab("Purpose Score") + 
+    ylab("Average # of Logins") +
+  coord_cartesian(xlim =c(1, 5), ylim = c(0, 60))
+```
+
+```{r}
+# MEDITATION EXPERIENCE
+
+merged_2_short %>% 
+  ggplot(aes(x= reorder(medi_exp, -logins), y = logins, fill = medi_exp)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  theme(legend.position="none") +
+  xlab("Meditation Experience") + 
+  ylab("# of Logins") +
+  ggtitle("The Relationship Between Meditation Experience and Total Logins") +
+  scale_fill_brewer(palette="Blues") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_x_discrete(limits = c("Never", "Less than 1 year", "1-2 years", "1-3 years", "3-5 years", "5-10 years", "6-10 years", "More than 10 years"))
+```
+
+```{r}
+# MEDITATION LENGTH
+
+merged_2_short %>% 
+  ggplot(aes(x= reorder(medi_long, -logins), y = logins, fill = medi_long)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  theme(legend.position="none") +
+  xlab("Meditation Length") + 
+  ylab("# of Logins") +
+  ggtitle("The Relationship Between Meditation Length and Total Logins") +
+  scale_fill_brewer(palette="Blues") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_x_discrete(limits = c("I don't currently meditate", "Less than 10 minutes", "10-20 minutes", "21-30 minutes", "31-45 minutes", "46-60 minutes", "More than 60 minutes"))
+```
+
+```{r}
+# MEDITATION FREQUENCY
+
+merged_2_short %>% 
+  ggplot(aes(x= reorder(medi_freq, -logins), y = logins, fill = medi_freq)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  theme(legend.position="none") +
+  xlab("Meditation Frequency") + 
+  ylab("# of Logins") +
+  scale_fill_brewer(palette="Blues") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  scale_x_discrete(limits = c("I don't currently meditate", "Less than once per week", "1-2 times per week", "3-4 times per week", "5-6 times per week", "7+ times per week"))
+```
+
+```{r}
+# EDUCATION LEVEL
+
+merged_2_short$edu_short <- dplyr::recode(merged_2_short$edu, 
+                         "Never attended school or only attended kindergarten" = "None",
+                         "Grades 1 through 4 (Primary School)" = "Elementary School",
+                         "Grades 5 through 8 (Middle School)" = "Middle School",
+                         "Grades 9 through 11 (Some High School)" = "Some High School",
+                         "Grade 12 or GED (High School Graduate)" = "High School Graduate",
+                         "1 to 3 years after High School (Technical School Some College Associate's Degree)" = "Associate's Degree",
+                         "College 4 years or more (College Graduate Bachelor's Degree)" = "Bachelor's Degree",
+                          "Advanced Degree (Master's Degree Doctorate Degree)" = "Master's or PHD")
+
+merged_2_short %>% 
+  ggplot(aes(x= reorder(edu_short, -logins), y = logins, fill = edu_short)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  theme(legend.position="none") +
+  xlab("Education Level") + 
+  ylab("# of Logins") +
+  scale_fill_brewer(palette="Blues") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_x_discrete(limits = c("None",
+                         "Elementary School",
+                          "Middle School",
+                         "Some High School",
+                         "High School Graduate",
+                         "Associate's Degree",
+                         "Bachelor's Degree",
+                          "Master's or PHD"))
+```
+
+```{r}
+# SEX
+
+merged_2_short %>% 
+  ggplot(aes(x= reorder(sex, -logins), y = logins, fill = sex)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  theme(legend.position="none") +
+  xlab("Sex") + 
+  ylab("# of Logins") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_x_discrete(limits = c("Female", "Male"))
+```
+
+```{r}
+# AGE GROUP
+
+merged_2_short %>% 
+  ggplot(aes(x= reorder(age_group, -logins), y = logins, fill = age_group)) +
+  geom_bar(stat = "summary", fun = "mean") +
+  theme(legend.position="none") +
+  xlab("Age Group") + 
+  ylab("# of Logins") +
+  scale_fill_brewer(palette="Blues") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+    panel.background = element_blank(), axis.line = element_line(colour = "black")) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  scale_x_discrete(limits = c("13-17", "18-24", "19-24", "25-34", "35-44", "45-54", "55-64", "65-74", "75 or older"))
+```
